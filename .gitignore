@@ -1,0 +1,6 @@
+/target
+/.vscode
+/Cargo.lock
+/.cargo
+/local
+/.local

@@ -1,0 +1,20 @@
+[package]
+name = "tjson-udf"
+version = "0.1.0"
+edition = "2024"
+authors = ["R.F. Anthracite <rfa@rfanth.com>"]
+description = "MariaDB UDF bindings for tjson-rs — parse and render TJSON from SQL"
+license = "BSD-3-Clause"
+repository = "https://github.com/rfanth/tjson-udf"
+homepage = "https://textjson.com"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+udf = "0.5"
+tjson = { version = "0.3", package = "tjson-rs" }
+serde_json = "1"
+
+[dev-dependencies]
+udf = { version = "0.5", features = ["mock"] }

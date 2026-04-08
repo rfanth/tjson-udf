@@ -76,8 +76,9 @@ Errors return SQL NULL. Detailed error messages are written to the MariaDB error
 DROP FUNCTION IF EXISTS json_to_tjson_with;
 DROP FUNCTION IF EXISTS json_to_tjson;
 DROP FUNCTION IF EXISTS tjson_to_json;
-DROP FUNCTION json_to_tjson_str;
-DROP FUNCTION tjson_to_json_str;
+DROP FUNCTION IF EXISTS json_to_tjson_str;
+DROP FUNCTION IF EXISTS tjson_to_json_str;
+DROP FUNCTION IF EXISTS tjson_options_check;
 ```
 
 ## Resources

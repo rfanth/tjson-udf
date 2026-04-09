@@ -18,55 +18,55 @@ git clone https://github.com/rfanth/tjson-udf
 cd tjson-udf
 ```
 
-You are now in the project directory.
+The easiest way to install is to use the included installer script.
 
-Choose one build:
-
-- Default build: quieter. Invalid input returns `NULL` but does not write parser errors to the MariaDB error log.
-- `error-log` build: same behavior, but also writes UDF errors to the MariaDB error log (`/var/log/mysql/error.log` or `journalctl -u mariadb`).
-
-Build the default version:
+**Install UDFs only**:
 
 ```bash
-cargo build --release
+./install.sh
 ```
 
-Or build the `error-log` version:
+**Install UDFs and the checked stored functions**:
 
 ```bash
-cargo build --release --features error-log
+./install.sh --all -- mysql -u root -D mydb
 ```
 
-That creates this file:
+**Build with MariaDB error-log logging enabled**:
 
 ```bash
-target/release/libtjson_udf.so
-```
-
-Copy that file into MariaDB's plugin directory:
-
-```bash
-sudo cp target/release/libtjson_udf.so /usr/lib/mysql/plugin/
-```
-
-Then install the SQL objects. There are two kinds:
-
-- UDFs: global MariaDB functions. Most users who want the plugin itself should install these.
-- Stored functions: checked wrappers created inside one database. Install these if you also want the `_checked` SQL functions.
-
-Install the UDFs:
-
-```bash
-mysql -u root < install_udf.sql
-```
-
-Install the stored functions in a specific database:
-
-```bash
-mysql -u root -D mydb < install_stored_functions.sql
+./install.sh --error-log
 ```
 
 Replace `mydb` with your database name.
+
+What `install.sh` does:
+
+- Builds `target/release/libtjson_udf.so`
+- Removes the existing SQL objects first for safety
+- Copies the shared object into MariaDB's plugin directory
+- Reinstalls the SQL objects you selected
+
+Useful installer options:
+
+- `--plugin-dir DIR` uses a plugin directory other than `/usr/lib/mysql/plugin`
+- `--stored` installs only `install_stored_functions.sql`
+- `--all` installs both the UDFs and the stored functions
+- `--uninstall` removes the selected SQL objects instead of installing them
+
+Examples:
+
+```bash
+./install.sh --plugin-dir /custom/plugin/dir
+./install.sh --stored --uninstall -- mysql -u root -D mydb
+```
+
+If you prefer to do the steps manually, `install.sh` is just automating this process:
+
+- `cargo build --release` or `cargo build --release --features error-log`
+- copy `target/release/libtjson_udf.so` into MariaDB's plugin directory
+- run `install_udf.sql`
+- optionally run `install_stored_functions.sql` in a specific database
 
 ### Functions
 
@@ -130,6 +130,15 @@ If you build with `cargo build --release --features error-log`, the UDFs also wr
 The `_checked` stored functions raise a SQL error (`SQLSTATE 45000`) with the error message, suitable for use in triggers or stored procedures where silent NULL propagation is undesirable.
 
 ## Uninstall
+
+The easiest way to uninstall is with the installer script:
+
+```bash
+./install.sh --uninstall
+./install.sh --uninstall --all -- mysql -u root -D mydb
+```
+
+Manual uninstall is also available.
 
 **UDFs** — require `DELETE ON mysql.func`:
 

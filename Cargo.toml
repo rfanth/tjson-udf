@@ -1,6 +1,6 @@
 [package]
 name = "tjson-udf"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 authors = ["R.F. Anthracite <rfa@rfanth.com>"]
 description = "MariaDB UDF bindings for tjson-rs — parse and render TJSON from SQL"

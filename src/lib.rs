@@ -3,6 +3,7 @@
 #![allow(unused_variables)]
 use udf::prelude::*;
 
+#[cfg(feature = "error-log")]
 fn udf_log_prefixed_lines(prefix: &str, msg: impl std::fmt::Display) {
     let msg = msg.to_string();
     let mut lines = msg.lines();
@@ -18,6 +19,9 @@ fn udf_log_prefixed_lines(prefix: &str, msg: impl std::fmt::Display) {
         udf_log!(line);
     }
 }
+
+#[cfg(not(feature = "error-log"))]
+fn udf_log_prefixed_lines(_prefix: &str, _msg: impl std::fmt::Display) {}
 
 // tjson_to_json(tjson_str) -> JSON string, or NULL on error
 struct TjsonToJson;

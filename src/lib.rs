@@ -3,16 +3,16 @@
 #![allow(unused_variables)]
 use udf::prelude::*;
 
-// tjson_to_json_str(tjson_str) -> JSON string
-struct TjsonToJsonStr;
+// tjson_to_json(tjson_str) -> JSON string, or NULL on error
+struct TjsonToJson;
 
 #[register]
-impl BasicUdf for TjsonToJsonStr {
-    type Returns<'a> = String;
+impl BasicUdf for TjsonToJson {
+    type Returns<'a> = Option<String>;
 
     fn init(_cfg: &UdfCfg<Init>, args: &ArgList<Init>) -> Result<Self, String> {
         if args.len() != 1 {
-            return Err("tjson_to_json_str() requires exactly 1 argument".into());
+            return Err("tjson_to_json() requires exactly 1 argument".into());
         }
         args.get(0).unwrap().set_type_coercion(SqlType::String);
         Ok(Self)
@@ -25,32 +25,71 @@ impl BasicUdf for TjsonToJsonStr {
         _error: Option<NonZeroU8>,
     ) -> Result<Self::Returns<'a>, ProcessError> {
         let arg = args.get(0).unwrap().value();
-        let input = arg.as_string().ok_or(ProcessError)?;
+        let input = match arg.as_string() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
 
         let val: serde_json::Value = tjson::from_str(input).map_err(|e| {
             let msg = e.to_string();
-            udf_log!("tjson_to_json_str parse error: {msg}");
+            udf_log!("tjson_to_json parse error: {msg}");
             ProcessError
         })?;
 
-        serde_json::to_string(&val).map_err(|e| {
-            let msg = e.to_string();
-            udf_log!("tjson_to_json_str serialize error: {msg}");
-            ProcessError
-        })
+        serde_json::to_string(&val)
+            .map(Some)
+            .map_err(|e| {
+                let msg = e.to_string();
+                udf_log!("tjson_to_json serialize error: {msg}");
+                ProcessError
+            })
     }
 }
 
-// json_to_tjson_str(json_str[, options_json]) -> TJSON string
-struct JsonToTjsonStr;
+// tjson_to_json_err(tjson_str) -> NULL on success, error string on failure
+struct TjsonToJsonErr;
 
 #[register]
-impl BasicUdf for JsonToTjsonStr {
-    type Returns<'a> = String;
+impl BasicUdf for TjsonToJsonErr {
+    type Returns<'a> = Option<String>;
+
+    fn init(_cfg: &UdfCfg<Init>, args: &ArgList<Init>) -> Result<Self, String> {
+        if args.len() != 1 {
+            return Err("tjson_to_json_err() requires exactly 1 argument".into());
+        }
+        args.get(0).unwrap().set_type_coercion(SqlType::String);
+        Ok(Self)
+    }
+
+    fn process<'a>(
+        &'a mut self,
+        _cfg: &UdfCfg<Process>,
+        args: &ArgList<Process>,
+        _error: Option<NonZeroU8>,
+    ) -> Result<Self::Returns<'a>, ProcessError> {
+        let arg = args.get(0).unwrap().value();
+        let input = match arg.as_string() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        match tjson::from_str::<serde_json::Value>(input) {
+            Ok(_) => Ok(None),
+            Err(e) => Ok(Some(e.to_string())),
+        }
+    }
+}
+
+// json_to_tjson(json_str[, options_json]) -> TJSON string, or NULL on error
+struct JsonToTjson;
+
+#[register]
+impl BasicUdf for JsonToTjson {
+    type Returns<'a> = Option<String>;
 
     fn init(_cfg: &UdfCfg<Init>, args: &ArgList<Init>) -> Result<Self, String> {
         if args.is_empty() || args.len() > 2 {
-            return Err("json_to_tjson_str() requires 1 or 2 arguments".into());
+            return Err("json_to_tjson() requires 1 or 2 arguments".into());
         }
         args.get(0).unwrap().set_type_coercion(SqlType::String);
         if let Some(mut a) = args.get(1) {
@@ -66,35 +105,73 @@ impl BasicUdf for JsonToTjsonStr {
         _error: Option<NonZeroU8>,
     ) -> Result<Self::Returns<'a>, ProcessError> {
         let arg = args.get(0).unwrap().value();
-        let input = arg.as_string().ok_or(ProcessError)?;
+        let input = match arg.as_string() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
 
         let json: serde_json::Value = serde_json::from_str(input).map_err(|e| {
             let msg = e.to_string();
-            udf_log!("json_to_tjson_str parse error: {msg}");
+            udf_log!("json_to_tjson parse error: {msg}");
             ProcessError
         })?;
 
-        let opts = if let Some(opts_arg) = args.get(1) {
-            let opts_val = opts_arg.value();
-            if let Some(opts_str) = opts_val.as_string() {
-                let cfg: tjson::TjsonConfig = serde_json::from_str(opts_str).map_err(|e| {
-                    let msg = e.to_string();
-                    udf_log!("json_to_tjson_str options parse error: {msg}");
-                    ProcessError
-                })?;
-                tjson::TjsonOptions::from(cfg)
-            } else {
-                tjson::TjsonOptions::default()
-            }
-        } else {
-            tjson::TjsonOptions::default()
+        let opts = parse_tjson_opts(&args, "json_to_tjson")?;
+
+        tjson::to_string_with(&json, opts)
+            .map(Some)
+            .map_err(|e| {
+                let msg = e.to_string();
+                udf_log!("json_to_tjson serialize error: {msg}");
+                ProcessError
+            })
+    }
+}
+
+// json_to_tjson_err(json_str[, options_json]) -> NULL on success, error string on failure
+struct JsonToTjsonErr;
+
+#[register]
+impl BasicUdf for JsonToTjsonErr {
+    type Returns<'a> = Option<String>;
+
+    fn init(_cfg: &UdfCfg<Init>, args: &ArgList<Init>) -> Result<Self, String> {
+        if args.is_empty() || args.len() > 2 {
+            return Err("json_to_tjson_err() requires 1 or 2 arguments".into());
+        }
+        args.get(0).unwrap().set_type_coercion(SqlType::String);
+        if let Some(mut a) = args.get(1) {
+            a.set_type_coercion(SqlType::String);
+        }
+        Ok(Self)
+    }
+
+    fn process<'a>(
+        &'a mut self,
+        _cfg: &UdfCfg<Process>,
+        args: &ArgList<Process>,
+        _error: Option<NonZeroU8>,
+    ) -> Result<Self::Returns<'a>, ProcessError> {
+        let arg = args.get(0).unwrap().value();
+        let input = match arg.as_string() {
+            Some(s) => s,
+            None => return Ok(None),
         };
 
-        tjson::to_string_with(&json, opts).map_err(|e| {
-            let msg = e.to_string();
-            udf_log!("json_to_tjson_str serialize error: {msg}");
-            ProcessError
-        })
+        let json: serde_json::Value = match serde_json::from_str(input) {
+            Ok(v) => v,
+            Err(e) => return Ok(Some(e.to_string())),
+        };
+
+        let opts = match parse_tjson_opts(&args, "json_to_tjson_err") {
+            Ok(o) => o,
+            Err(_) => return Ok(Some("failed to parse options".into())),
+        };
+
+        match tjson::to_string_with(&json, opts) {
+            Ok(_) => Ok(None),
+            Err(e) => Ok(Some(e.to_string())),
+        }
     }
 }
 
@@ -121,7 +198,7 @@ impl BasicUdf for TjsonOptionsCheck {
     ) -> Result<Self::Returns<'a>, ProcessError> {
         let arg = args.get(0).unwrap().value();
         let Some(input) = arg.as_string() else {
-            return Ok(Some("options argument is NULL".into()));
+            return Ok(None);
         };
         match serde_json::from_str::<tjson::TjsonConfig>(input) {
             Ok(_) => Ok(None),
@@ -130,18 +207,33 @@ impl BasicUdf for TjsonOptionsCheck {
     }
 }
 
+fn parse_tjson_opts(args: &ArgList<Process>, fn_name: &str) -> Result<tjson::TjsonOptions, ProcessError> {
+    if let Some(opts_arg) = args.get(1) {
+        let opts_val = opts_arg.value();
+        if let Some(opts_str) = opts_val.as_string() {
+            let cfg: tjson::TjsonConfig = serde_json::from_str(opts_str).map_err(|e| {
+                let msg = e.to_string();
+                udf_log!("{fn_name} options parse error: {msg}");
+                ProcessError
+            })?;
+            return Ok(tjson::TjsonOptions::from(cfg));
+        }
+    }
+    Ok(tjson::TjsonOptions::default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use udf::mock::{mock_args, MockUdfCfg};
 
-    // --- TjsonToJsonStr tests ---
+    // --- TjsonToJson tests ---
 
     #[test]
     fn tjson_to_json_init_ok() {
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![("  name: Alice", "s", false)];
-        assert!(TjsonToJsonStr::init(cfg.as_init(), args.as_init()).is_ok());
+        assert!(TjsonToJson::init(cfg.as_init(), args.as_init()).is_ok());
     }
 
     #[test]
@@ -151,16 +243,16 @@ mod tests {
             ("  name: Alice", "s", false),
             ("extra", "s2", false)
         ];
-        assert!(TjsonToJsonStr::init(cfg.as_init(), args.as_init()).is_err());
+        assert!(TjsonToJson::init(cfg.as_init(), args.as_init()).is_err());
     }
 
     #[test]
     fn tjson_to_json_process_ok() {
-        let mut udf = TjsonToJsonStr;
+        let mut udf = TjsonToJson;
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![("  name: Alice\n  age:30", "s", false)];
-        let result = TjsonToJsonStr::process(&mut udf, cfg.as_process(), args.as_process(), None);
-        let json = result.expect("process failed");
+        let result = TjsonToJson::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        let json = result.expect("process failed").expect("got NULL");
         let val: serde_json::Value = serde_json::from_str(&json).expect("not valid json");
         assert_eq!(val["name"], "Alice");
         assert_eq!(val["age"], 30);
@@ -168,20 +260,49 @@ mod tests {
 
     #[test]
     fn tjson_to_json_process_null_input() {
-        let mut udf = TjsonToJsonStr;
+        let mut udf = TjsonToJson;
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![(String None, "s", true)];
-        let result = TjsonToJsonStr::process(&mut udf, cfg.as_process(), args.as_process(), None);
-        assert!(result.is_err());
+        let result = TjsonToJson::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert_eq!(result.unwrap(), None);
     }
 
-    // --- JsonToTjsonStr tests ---
+    // --- TjsonToJsonErr tests ---
+
+    #[test]
+    fn tjson_to_json_err_valid_input_returns_null() {
+        let mut udf = TjsonToJsonErr;
+        let mut cfg = MockUdfCfg::new();
+        let mut args = mock_args![("  name: Alice", "s", false)];
+        let result = TjsonToJsonErr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn tjson_to_json_err_invalid_input_returns_message() {
+        let mut udf = TjsonToJsonErr;
+        let mut cfg = MockUdfCfg::new();
+        let mut args = mock_args![("{{{{not tjson", "s", false)];
+        let result = TjsonToJsonErr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert!(result.unwrap().is_some());
+    }
+
+    #[test]
+    fn tjson_to_json_err_null_input_returns_null() {
+        let mut udf = TjsonToJsonErr;
+        let mut cfg = MockUdfCfg::new();
+        let mut args = mock_args![(String None, "s", true)];
+        let result = TjsonToJsonErr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert_eq!(result.unwrap(), None);
+    }
+
+    // --- JsonToTjson tests ---
 
     #[test]
     fn json_to_tjson_init_ok_one_arg() {
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![(r#"{"name":"Alice"}"#, "s", false)];
-        assert!(JsonToTjsonStr::init(cfg.as_init(), args.as_init()).is_ok());
+        assert!(JsonToTjson::init(cfg.as_init(), args.as_init()).is_ok());
     }
 
     #[test]
@@ -191,56 +312,94 @@ mod tests {
             (r#"{"name":"Alice"}"#, "s", false),
             (r#"{"canonical":true}"#, "opts", false)
         ];
-        assert!(JsonToTjsonStr::init(cfg.as_init(), args.as_init()).is_ok());
+        assert!(JsonToTjson::init(cfg.as_init(), args.as_init()).is_ok());
     }
 
     #[test]
     fn json_to_tjson_init_wrong_arg_count() {
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![];
-        assert!(JsonToTjsonStr::init(cfg.as_init(), args.as_init()).is_err());
+        assert!(JsonToTjson::init(cfg.as_init(), args.as_init()).is_err());
     }
 
     #[test]
     fn json_to_tjson_process_ok() {
-        let mut udf = JsonToTjsonStr;
+        let mut udf = JsonToTjson;
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![(r#"{"name":"Alice","age":30}"#, "s", false)];
-        let result = JsonToTjsonStr::process(&mut udf, cfg.as_process(), args.as_process(), None);
-        assert!(result.is_ok());
+        let result = JsonToTjson::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert!(result.unwrap().is_some());
     }
 
     #[test]
     fn json_to_tjson_process_with_canonical() {
-        let mut udf = JsonToTjsonStr;
+        let mut udf = JsonToTjson;
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![
             (r#"{"name":"Alice"}"#, "s", false),
             (r#"{"canonical":true}"#, "opts", false)
         ];
-        let result = JsonToTjsonStr::process(&mut udf, cfg.as_process(), args.as_process(), None);
-        assert!(result.is_ok());
+        let result = JsonToTjson::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert!(result.unwrap().is_some());
     }
 
     #[test]
     fn json_to_tjson_process_invalid_json() {
-        let mut udf = JsonToTjsonStr;
+        let mut udf = JsonToTjson;
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![("not json {{{", "s", false)];
-        let result = JsonToTjsonStr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        let result = JsonToTjson::process(&mut udf, cfg.as_process(), args.as_process(), None);
         assert!(result.is_err());
     }
 
     #[test]
     fn json_to_tjson_process_invalid_options() {
-        let mut udf = JsonToTjsonStr;
+        let mut udf = JsonToTjson;
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![
             (r#"{"name":"Alice"}"#, "s", false),
             ("not valid json", "opts", false)
         ];
-        let result = JsonToTjsonStr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        let result = JsonToTjson::process(&mut udf, cfg.as_process(), args.as_process(), None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn json_to_tjson_process_null_input() {
+        let mut udf = JsonToTjson;
+        let mut cfg = MockUdfCfg::new();
+        let mut args = mock_args![(String None, "s", true)];
+        let result = JsonToTjson::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert_eq!(result.unwrap(), None);
+    }
+
+    // --- JsonToTjsonErr tests ---
+
+    #[test]
+    fn json_to_tjson_err_valid_input_returns_null() {
+        let mut udf = JsonToTjsonErr;
+        let mut cfg = MockUdfCfg::new();
+        let mut args = mock_args![(r#"{"name":"Alice"}"#, "s", false)];
+        let result = JsonToTjsonErr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn json_to_tjson_err_invalid_input_returns_message() {
+        let mut udf = JsonToTjsonErr;
+        let mut cfg = MockUdfCfg::new();
+        let mut args = mock_args![("not json {{{", "s", false)];
+        let result = JsonToTjsonErr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert!(result.unwrap().is_some());
+    }
+
+    #[test]
+    fn json_to_tjson_err_null_input_returns_null() {
+        let mut udf = JsonToTjsonErr;
+        let mut cfg = MockUdfCfg::new();
+        let mut args = mock_args![(String None, "s", true)];
+        let result = JsonToTjsonErr::process(&mut udf, cfg.as_process(), args.as_process(), None);
+        assert_eq!(result.unwrap(), None);
     }
 
     // --- TjsonOptionsCheck tests ---
@@ -278,15 +437,6 @@ mod tests {
         let mut cfg = MockUdfCfg::new();
         let mut args = mock_args![(String None, "opts", true)];
         let result = TjsonOptionsCheck::process(&mut udf, cfg.as_process(), args.as_process(), None);
-        assert!(result.unwrap().is_some());
-    }
-
-    #[test]
-    fn json_to_tjson_process_null_input() {
-        let mut udf = JsonToTjsonStr;
-        let mut cfg = MockUdfCfg::new();
-        let mut args = mock_args![(String None, "s", true)];
-        let result = JsonToTjsonStr::process(&mut udf, cfg.as_process(), args.as_process(), None);
-        assert!(result.is_err());
+        assert_eq!(result.unwrap(), None);
     }
 }

@@ -18,37 +18,57 @@ sudo cp target/release/libtjson_udf.so /usr/lib/mysql/plugin/
 
 ## Install
 
-Run `install.sql` against your database:
+Two install scripts are provided with different privilege requirements.
+
+**UDFs** — work across all databases, require `INSERT ON mysql.func` and `DELETE ON mysql.func` (typically root):
 
 ```bash
-mysql -u root < install.sql
+mysql -u root < install_udf.sql
 ```
 
-This registers the UDF shared library and creates the following functions:
+**Stored functions** — per-database checked variants, require `CREATE ROUTINE` and `ALTER ROUTINE` on the target database:
+
+```bash
+mysql -u root -D mydb < install_stored_functions.sql
+```
+
+### Functions
 
 | Function | Arguments | Returns | Description |
 |---|---|---|---|
-| `tjson_to_json(s)` | TJSON text | JSON | Parse TJSON, return native MariaDB JSON |
-| `json_to_tjson(s)` | JSON | TEXT | Render JSON as TJSON with default options |
-| `json_to_tjson_with(s, opts)` | JSON, options TEXT | TEXT | Render JSON as TJSON with custom options |
+| `tjson_to_json(s)` | TJSON text | STRING | Parse TJSON, return JSON string. NULL on error. |
+| `tjson_to_json_err(s)` | TJSON text | STRING | NULL on success, error message on failure. |
+| `json_to_tjson(s[, opts])` | JSON, options JSON | STRING | Render JSON as TJSON. NULL on error. |
+| `json_to_tjson_err(s[, opts])` | JSON, options JSON | STRING | NULL on success, error message on failure. |
+| `tjson_options_check(opts)` | options JSON | STRING | NULL if options are valid or NULL, error message if invalid. |
+| `json_to_tjson_checked(s, opts)` | JSON, options JSON | TEXT | Render JSON as TJSON. Raises a SQL error on any failure. Pass NULL for default options. |
+| `tjson_to_json_checked(s)` | TJSON text | TEXT | Parse TJSON. Raises a SQL error on failure. |
+
+The UDFs (`tjson_to_json`, `json_to_tjson`, and their `_err` variants, and `tjson_options_check`) are fast. The `_checked` stored functions call the UDFs internally and are significantly slower — use them for setup/config paths, not hot row processing.  All functions including _err variants and tjson_options_check propagate a NULL first argument.
 
 ## Usage
 
 ```sql
 -- Parse TJSON to JSON
-SELECT tjson_to_json('{ name: "Alice", age: 30 }');
+SELECT tjson_to_json('  name: Alice\n  age: 30');
 
 -- Render JSON as TJSON
 SELECT json_to_tjson('{"name": "Alice", "age": 30}');
 
 -- Render with options
-SELECT json_to_tjson_with('{"name": "Alice"}', '{"canonical": true}');
-SELECT json_to_tjson_with('{"body": "long text..."}', '{"wrapWidth": 80, "multilineStrings": true}');
+SELECT json_to_tjson('{"name": "Alice"}', '{"canonical": true}');
+
+-- Find bad rows and see why
+SELECT col, tjson_to_json_err(col) FROM t WHERE tjson_to_json(col) IS NULL;
+
+-- Raise a SQL error on bad input (e.g. in a trigger or stored procedure)
+SELECT json_to_tjson_checked('{"name": "Alice"}', '{"canonical": true}');
+SELECT tjson_to_json_checked('  name: Alice');
 ```
 
 ## Options
 
-`json_to_tjson_with` accepts a JSON options object using the same camelCase keys as the [tjson npm package](https://www.npmjs.com/package/@rfanth/tjson). All fields are optional.
+`json_to_tjson` and `json_to_tjson_checked` accept a JSON options object using the same camelCase keys as the [tjson npm package](https://www.npmjs.com/package/@rfanth/tjson). All fields are optional.
 
 | Option | Type | Description |
 |---|---|---|
@@ -68,17 +88,22 @@ See the [tjson-rs documentation](https://docs.rs/tjson-rs) for the full options 
 
 ## Error handling
 
-Errors return SQL NULL. Detailed error messages are written to the MariaDB error log (`/var/log/mysql/error.log` or `journalctl -u mariadb`).
+`tjson_to_json` and `json_to_tjson` return NULL on error. To get the error message, call the corresponding `_err` variant on the same input. Errors are also written to the MariaDB error log (`/var/log/mysql/error.log` or `journalctl -u mariadb`).
+
+The `_checked` stored functions raise a SQL error (`SQLSTATE 45000`) with the error message, suitable for use in triggers or stored procedures where silent NULL propagation is undesirable.
 
 ## Uninstall
 
-```sql
-DROP FUNCTION IF EXISTS json_to_tjson_with;
-DROP FUNCTION IF EXISTS json_to_tjson;
-DROP FUNCTION IF EXISTS tjson_to_json;
-DROP FUNCTION IF EXISTS json_to_tjson_str;
-DROP FUNCTION IF EXISTS tjson_to_json_str;
-DROP FUNCTION IF EXISTS tjson_options_check;
+**UDFs** — require `DELETE ON mysql.func`:
+
+```bash
+mysql -u root < uninstall_udf.sql
+```
+
+**Stored functions** — require `DROP ROUTINE` (or `ALTER ROUTINE`, or ownership) on the target database:
+
+```bash
+mysql -u root -D mydb < uninstall_stored_functions.sql
 ```
 
 ## Resources

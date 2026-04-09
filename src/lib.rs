@@ -3,6 +3,22 @@
 #![allow(unused_variables)]
 use udf::prelude::*;
 
+fn udf_log_prefixed_lines(prefix: &str, msg: impl std::fmt::Display) {
+    let msg = msg.to_string();
+    let mut lines = msg.lines();
+    if let Some(first_line) = lines.next() {
+        let line = format!("{prefix}{first_line}");
+        udf_log!(line);
+        for rest in lines {
+            let line = format!("{prefix}{rest}");
+            udf_log!(line);
+        }
+    } else {
+        let line = prefix.to_string();
+        udf_log!(line);
+    }
+}
+
 // tjson_to_json(tjson_str) -> JSON string, or NULL on error
 struct TjsonToJson;
 
@@ -31,16 +47,14 @@ impl BasicUdf for TjsonToJson {
         };
 
         let val: serde_json::Value = tjson::from_str(input).map_err(|e| {
-            let msg = e.to_string();
-            udf_log!("tjson_to_json parse error: {msg}");
+            udf_log_prefixed_lines("tjson_to_json parse error: ", e);
             ProcessError
         })?;
 
         serde_json::to_string(&val)
             .map(Some)
             .map_err(|e| {
-                let msg = e.to_string();
-                udf_log!("tjson_to_json serialize error: {msg}");
+                udf_log_prefixed_lines("tjson_to_json serialize error: ", e);
                 ProcessError
             })
     }
@@ -111,8 +125,7 @@ impl BasicUdf for JsonToTjson {
         };
 
         let json: serde_json::Value = serde_json::from_str(input).map_err(|e| {
-            let msg = e.to_string();
-            udf_log!("json_to_tjson parse error: {msg}");
+            udf_log_prefixed_lines("json_to_tjson parse error: ", e);
             ProcessError
         })?;
 
@@ -121,8 +134,7 @@ impl BasicUdf for JsonToTjson {
         tjson::to_string_with(&json, opts)
             .map(Some)
             .map_err(|e| {
-                let msg = e.to_string();
-                udf_log!("json_to_tjson serialize error: {msg}");
+                udf_log_prefixed_lines("json_to_tjson serialize error: ", e);
                 ProcessError
             })
     }
@@ -212,8 +224,8 @@ fn parse_tjson_opts(args: &ArgList<Process>, fn_name: &str) -> Result<tjson::Tjs
         let opts_val = opts_arg.value();
         if let Some(opts_str) = opts_val.as_string() {
             let cfg: tjson::TjsonConfig = serde_json::from_str(opts_str).map_err(|e| {
-                let msg = e.to_string();
-                udf_log!("{fn_name} options parse error: {msg}");
+                let prefix = format!("{fn_name} options parse error: ");
+                udf_log_prefixed_lines(&prefix, e);
                 ProcessError
             })?;
             return Ok(tjson::TjsonOptions::from(cfg));

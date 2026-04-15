@@ -121,12 +121,12 @@ else
     fi
 
     if [[ "$install_udfs" == true ]]; then
-        echo "Installing UDF SQL objects..."
+        echo "Installing UDF SQL objects...  (function does not exist messages are normal)"
         mysqlload install_udf.sql
     fi
 
     if [[ "$install_stored_functions" == true ]]; then
-        echo "Installing stored functions..."
+        echo "Installing stored functions...  (function does not exist messages are normal)"
         mysqlload install_stored_functions.sql
     fi
 fi

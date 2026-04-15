@@ -106,20 +106,51 @@ SELECT tjson_to_json_checked('  name: Alice');
 
 `json_to_tjson` and `json_to_tjson_checked` accept a JSON options object using the same camelCase keys as the [tjson npm package](https://www.npmjs.com/package/@rfanth/tjson). All fields are optional.
 
-| Option | Type | Description |
-|---|---|---|
-| `canonical` | bool | Compact, diff-friendly output (overrides other options) |
-| `wrapWidth` | number | Target line wrap width (0 = unlimited) |
-| `forceMarkers` | bool | Always emit indent markers |
-| `bareStrings` | string | Bare string style |
-| `bareKeys` | string | Bare key style |
-| `inlineObjects` | bool | Prefer inline object rendering |
-| `inlineArrays` | bool | Prefer inline array rendering |
-| `multilineStrings` | bool | Allow multiline string rendering |
-| `multilineStyle` | string | Multiline string style |
-| `tables` | bool | Enable pipe table rendering |
+The underlying library's Rust API uses snake_case and idiomatic Rust, but exposes the same options.
 
-See the [tjson-rs documentation](https://docs.rs/tjson-rs) for the full options list.
+**Key options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `canonical` | `false` | One key per line, no packing, no tables |
+| `wrapWidth` | `80` | Column wrap limit; `0` for unlimited |
+| `tables` | `true` | Render arrays-of-objects as pipe tables |
+| `multilineStrings` | `true` | Use `\`\`` blocks for strings containing newlines |
+| `inlineObjects` | `true` | Pack multiple key-value pairs onto one line |
+| `inlineArrays` | `true` | Pack multiple array items onto one line |
+| `stringArrayStyle` | `"preferComma"` | How to pack all-string arrays |
+
+**Advanced options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `bareStrings` | `"prefer"` | Use bare (unquoted) string values when spec permits |
+| `bareKeys` | `"prefer"` | Use bare (unquoted) object keys when spec permits |
+| `forceMarkers` | `false` | Force explicit `[` / `{` indent markers on single-step indents |
+| `multilineStyle` | `"bold"` | Multiline block style (`"bold"`, `"floating"`, `"light"`, etc.) |
+| `multilineMinLines` | `1` | Min newlines in a string before using a multiline block |
+| `indentGlyphStyle` | `"auto"` | When to wrap deeply nested content in `/<` `/>` glyphs |
+| `indentGlyphMarkerStyle` | `"compact"` | Where to place the opening `/<` glyph |
+| `tableUnindentStyle` | `"auto"` | How to reposition wide tables toward the left margin |
+| `tableMinRows` | `3` | Min rows required to render a table |
+| `tableMinColumns` | `3` | Min columns required to render a table |
+| `tableMinSimilarity` | `0.8` | Min fraction of rows sharing a column |
+| `tableColumnMaxWidth` | `40` | Bail on table if any column exceeds this width |
+| `fold` | — | Set all four fold styles at once; more specific options override |
+| `numberFoldStyle` | `"auto"` | How to fold long numbers across lines |
+| `stringBareFoldStyle` | `"auto"` | How to fold long bare strings |
+| `stringQuotedFoldStyle` | `"auto"` | How to fold long quoted strings |
+| `stringMultilineFoldStyle` | `"none"` | How to fold multiline block continuation lines |
+
+**Experimental options** (may change or be removed in a future version):
+
+| Option | Default | Description |
+|---|---|---|
+| `kvPackMultiple` | `2` | Spacing multiplier between packed key-value pairs (1–4; spaces = value × 2) |
+| `multilineMaxLines` | `10` | Max lines in a `"floating"` block before falling back to `"bold"` |
+| `tableFold` | `false` | Fold long table rows across continuation lines |
+
+See the [tjson npm package](https://www.npmjs.com/package/@rfanth/tjson) or [tjson-rs documentation](https://docs.rs/tjson-rs) for more documentation.
 
 ## Error handling
 

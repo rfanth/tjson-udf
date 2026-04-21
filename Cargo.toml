@@ -1,6 +1,6 @@
 [package]
 name = "tjson-udf"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 authors = ["R.F. Anthracite <rfa@rfanth.com>"]
 description = "MariaDB UDF bindings for tjson-rs — parse and render TJSON from SQL"
@@ -17,7 +17,7 @@ error-log = []
 
 [dependencies]
 udf = "0.5"
-tjson = { version = "0.5", package = "tjson-rs" }
+tjson = { version = "0.6", package = "tjson-rs" }
 serde_json = "1"
 
 [dev-dependencies]

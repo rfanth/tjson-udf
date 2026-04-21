@@ -223,7 +223,7 @@ impl BasicUdf for TjsonOptionsCheck {
     }
 }
 
-fn parse_tjson_opts(args: &ArgList<Process>, fn_name: &str) -> Result<tjson::TjsonOptions, ProcessError> {
+fn parse_tjson_opts(args: &ArgList<Process>, fn_name: &str) -> Result<tjson::RenderOptions, ProcessError> {
     if let Some(opts_arg) = args.get(1) {
         let opts_val = opts_arg.value();
         if let Some(opts_str) = opts_val.as_string() {
@@ -232,10 +232,10 @@ fn parse_tjson_opts(args: &ArgList<Process>, fn_name: &str) -> Result<tjson::Tjs
                 udf_log_prefixed_lines(&prefix, e);
                 ProcessError
             })?;
-            return Ok(tjson::TjsonOptions::from(cfg));
+            return Ok(tjson::RenderOptions::from(cfg));
         }
     }
-    Ok(tjson::TjsonOptions::default())
+    Ok(tjson::RenderOptions::default())
 }
 
 #[cfg(test)]
